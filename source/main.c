@@ -1,5 +1,6 @@
 #include <switch.h>
 #include <string.h>
+#include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -308,6 +309,29 @@ static void getCodeMemoryCapability(void)
     }
 }
 
+bool readAndCopy(char *dst, char *path)
+{
+    FILE *fp = fopen(path, "rb");
+
+    if (!fp)
+        return false;
+
+    fseek(fp, 0L, SEEK_END);
+
+    long size = ftell(fp);
+
+    rewind(fp);
+
+    if (!fread(dst, size, 1, fp))
+    {
+        fclose(fp);
+        return false;
+    }
+
+    fclose(fp);
+    return true;
+}
+
 void loadNro(void)
 {
     NroHeader* header = NULL;
@@ -352,9 +376,23 @@ void loadNro(void)
     }
 
     if (g_nextNroPath[0] == '\0')
-    {
-        memcpy(g_nextNroPath, DEFAULT_NRO, sizeof(DEFAULT_NRO));
-        memcpy(g_nextArgv,    DEFAULT_NRO, sizeof(DEFAULT_NRO));
+    {        
+        Result rc = romfsInit();
+        if (R_SUCCEEDED(rc))
+        {
+            if (!readAndCopy(g_nextNroPath, "romfs:/nextNroPath") || !readAndCopy(g_nextArgv, "romfs:/nextArgv"))
+            {
+                memcpy(g_nextNroPath, DEFAULT_NRO, sizeof(DEFAULT_NRO));
+                memcpy(g_nextArgv,    DEFAULT_NRO, sizeof(DEFAULT_NRO));
+            }
+
+            romfsExit();
+        }
+        else
+        {
+            memcpy(g_nextNroPath, DEFAULT_NRO, sizeof(DEFAULT_NRO));
+            memcpy(g_nextArgv,    DEFAULT_NRO, sizeof(DEFAULT_NRO));
+        }
     }
 
     memcpy(g_argv, g_nextArgv, sizeof g_argv);
