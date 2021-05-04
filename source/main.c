@@ -17,6 +17,7 @@ u64  g_nroAddr = 0;
 static u64  g_nroSize = 0;
 static NroHeader g_nroHeader;
 static bool g_isApplication = 0;
+static bool g_exitAppOnReturn = false;
 
 static bool g_isAutomaticGameplayRecording = 0;
 static enum {
@@ -332,6 +333,64 @@ bool readAndCopy(char *dst, char *path)
     return true;
 }
 
+static void selfExit(void) {
+    Service applet, proxy, self;
+    Result rc=0;
+
+    rc = smInitialize();
+    if (R_FAILED(rc))
+        goto fail0;
+
+    rc = smGetService(&applet, g_isApplication ? "appletOE" : "appletAE");
+    if (R_FAILED(rc))
+        goto fail1;
+
+    u32 cmd_id = g_isApplication ? 0 : 200;
+    u64 reserved = 0;
+
+    // GetSessionProxy
+    rc = serviceDispatchIn(&applet, cmd_id, reserved,
+        .in_send_pid = true,
+        .in_num_handles = 1,
+        .in_handles = { g_procHandle },
+        .out_num_objects = 1,
+        .out_objects = &proxy,
+    );
+    if (R_FAILED(rc))
+        goto fail2;
+
+    // GetSelfController
+    rc = serviceDispatch(&proxy, 1,
+        .out_num_objects = 1,
+        .out_objects = &self,
+    );
+    if (R_FAILED(rc))
+        goto fail3;
+
+    // Exit
+    rc = serviceDispatch(&self, 0);
+
+    serviceClose(&self);
+
+fail3:
+    serviceClose(&proxy);
+
+fail2:
+    serviceClose(&applet);
+
+fail1:
+    smExit();
+
+fail0:
+    if (R_SUCCEEDED(rc)) {
+        while(1) svcSleepThread(86400000000000ULL);
+        svcExitProcess();
+        __builtin_unreachable();
+    } else {
+        diagAbortWithResult(rc);
+    }
+}
+
 void loadNro(void)
 {
     NroHeader* header = NULL;
@@ -376,7 +435,11 @@ void loadNro(void)
     }
 
     if (g_nextNroPath[0] == '\0')
-    {        
+    {
+        if (g_exitAppOnReturn)
+            selfExit();
+        
+        g_exitAppOnReturn = true;
         Result rc = romfsInit();
         if (R_SUCCEEDED(rc))
         {
@@ -385,7 +448,6 @@ void loadNro(void)
                 memcpy(g_nextNroPath, DEFAULT_NRO, sizeof(DEFAULT_NRO));
                 memcpy(g_nextArgv,    DEFAULT_NRO, sizeof(DEFAULT_NRO));
             }
-
             romfsExit();
         }
         else

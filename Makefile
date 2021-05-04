@@ -43,7 +43,7 @@ SOURCES		:=	source
 DATA		:=	data
 INCLUDES	:=	include
 EXEFS_SRC	:=	exefs_src
-APP_VERSION	:=	1.0.0
+APP_VERSION	:=	2.4.1
 
 #---------------------------------------------------------------------------------
 # options for code generation
